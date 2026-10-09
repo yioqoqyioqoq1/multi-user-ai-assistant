@@ -37,10 +37,11 @@ from app.tools.tools import get_all_tools
 
 
 class Sidekick:
-    def __init__(self):
-        self.sidekick_id = str(uuid.uuid4())
+    def __init__(self, thread_id: str | None = None, memory=None):
+        # thread_id 用于对齐业务层的 conversation_id，使 checkpointer 与数据库保持一致
+        self.sidekick_id = thread_id or str(uuid.uuid4())
         self._checkpointer_ctx = None
-        self.memory = None
+        self.memory = memory  # 若为 None，setup 时会自己打开一个 checkpoint 连接
         self.tools = None
         self.sessions = None
         self.worker = None
@@ -55,7 +56,8 @@ class Sidekick:
     async def setup(self):
         config.ensure_dirs()
         self.tools, self.sessions = await get_all_tools(str(config.SANDBOX))
-        self.memory, self._checkpointer_ctx = await open_checkpointer()
+        if self.memory is None:
+            self.memory, self._checkpointer_ctx = await open_checkpointer()
         self.worker = create_agent(
             model=get_llm(),
             tools=self.tools,
@@ -109,6 +111,25 @@ class Sidekick:
         """一轮对话流程：worker 尝试执行任务，evaluator 校验结果；evaluator 会带上反馈让
         worker 重试，最大重试次数为 MAX_ATTEMPTS。若 worker 因等待审批而暂停，本方法会
         立刻返回并标记为 paused；调用 resume() 即可继续这一轮。"""
+        last = None
+        async for event in self._stream(message, success_criteria, history):
+            last = event
+        return last["history"]
+
+    async def resume(self, history: list) -> list:
+        """批准 worker 暂停时待执行的操作，继续推进本轮流程。"""
+        payload = Command(resume={"decisions": [{"type": "approve"}] * self.pending_actions})
+        last = None
+        async for event in self._advance(payload, history):
+            last = event
+        return last["history"]
+
+    async def stream_turn(self, message: str, success_criteria: str, history: list):
+        """与 run_turn 逻辑一致，但以异步生成器逐步 yield 中间事件，供 WebSocket 流式输出。"""
+        async for event in self._stream(message, success_criteria, history):
+            yield event
+
+    async def _stream(self, message: str, success_criteria: str, history: list):
         self.task = message
         self.success_criteria = success_criteria or "The answer should be clear, correct and complete"
         self.attempts = 0
@@ -121,26 +142,34 @@ class Sidekick:
                 }
             ]
         }
-        return await self._advance(payload, history + [{"role": "user", "content": message}])
+        async for event in self._advance(payload, history + [{"role": "user", "content": message}]):
+            yield event
 
-    async def resume(self, history: list) -> list:
-        """批准 worker 暂停时待执行的操作，继续推进本轮流程。"""
-        payload = Command(resume={"decisions": [{"type": "approve"}] * self.pending_actions})
-        return await self._advance(payload, history)
+    async def _advance(self, payload, history: list):
+        """核心循环的生成器版本：逐步 yield 中间事件。
 
-    async def _advance(self, payload, history: list) -> list:
+        事件字典类型：
+        - {"type": "todos", "todos": [...]}        待办列表更新
+        - {"type": "approval", "history": [...]}   等待人工审批
+        - {"type": "final", "history": [...]}      本轮完成
+        """
         config_ = {"configurable": {"thread_id": self.sidekick_id}}
         while True:
             result = None
             async for result in self.worker.astream(payload, config=config_, stream_mode="values"):
                 self.todos = result.get("todos", self.todos)
+                yield {"type": "todos", "todos": self.todos}
 
             if "__interrupt__" in result:
                 actions = result["__interrupt__"][0].value["action_requests"]
                 self.paused = True
                 self.pending_actions = len(actions)
                 described = "\n".join(action["description"] for action in actions)
-                return history + [{"role": "assistant", "content": f"Waiting for your approval:\n{described}"}]
+                yield {
+                    "type": "approval",
+                    "history": history + [{"role": "assistant", "content": f"Waiting for your approval:\n{described}"}],
+                }
+                return
 
             self.paused = False
             reply = result["messages"][-1].content
@@ -150,10 +179,14 @@ class Sidekick:
             self.attempts += 1
             verdict = await self.evaluate(self.task, self.success_criteria, reply, tools_used)
             if verdict.success_criteria_met or verdict.user_input_needed or self.attempts >= config.MAX_ATTEMPTS:
-                return history + [
-                    {"role": "assistant", "content": reply},
-                    {"role": "assistant", "content": f"Evaluator: {verdict.feedback}"},
-                ]
+                yield {
+                    "type": "final",
+                    "history": history + [
+                        {"role": "assistant", "content": reply},
+                        {"role": "assistant", "content": f"Evaluator: {verdict.feedback}"},
+                    ],
+                }
+                return
             payload = {
                 "messages": [
                     {
@@ -165,7 +198,7 @@ class Sidekick:
             }
 
     async def cleanup(self):
-        """关闭 MCP 服务器和持久化 checkpointer；浏览器窗口会随之关闭。"""
+        """关闭 MCP 服务器；若本实例自己持有 checkpointer 则一并释放。"""
         if self.sessions:
             self.sessions.stop()
         if self._checkpointer_ctx:
