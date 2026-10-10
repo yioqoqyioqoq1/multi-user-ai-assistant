@@ -1,10 +1,13 @@
 """WebSocket 流式输出端点。"""
+import jwt
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import delete
 
 from app.core.agent_manager import default_manager
 from app.core.db import SessionFactory
-from app.models.models import Conversation, Message, utcnow
+from app.core.security import decode_token
+from app.models.models import Conversation, Message, User, utcnow
 
 router = APIRouter()
 
@@ -23,7 +26,23 @@ async def _persist(conversation_id: str, history: list[dict]) -> None:
 
 @router.websocket("/ws/{conversation_id}")
 async def websocket_turn(websocket: WebSocket, conversation_id: str):
+    # 浏览器 WebSocket 无法自定义 Authorization 头，token 走 query 参数
+    token = websocket.query_params.get("token")
+    try:
+        user_id = decode_token(token) if token else None
+    except jwt.PyJWTError:
+        user_id = None
+
+    async with SessionFactory() as db:
+        user = await db.get(User, user_id) if user_id else None
+        conv = await db.get(Conversation, conversation_id)
+
     await websocket.accept()
+    if user is None or conv is None or conv.user_id != user.id:
+        await websocket.send_json({"type": "error", "detail": "Unauthorized"})
+        await websocket.close(code=1008)
+        return
+
     sidekick = await default_manager.get(conversation_id)
     try:
         while True:
