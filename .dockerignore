@@ -1,0 +1,28 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+
+# 环境变量（含真实密钥，绝不打包进镜像）
+.env
+
+# 运行时数据与沙箱
+data/
+sandbox/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store

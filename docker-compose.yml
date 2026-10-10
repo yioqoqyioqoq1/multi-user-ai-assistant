@@ -1,0 +1,17 @@
+services:
+  backend:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./data:/srv/app/data
+      - ./sandbox:/srv/app/sandbox
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
