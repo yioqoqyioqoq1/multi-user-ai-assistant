@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import routes, websocket
+from app.api import auth, routes, websocket
 from app.core.agent_manager import default_manager
 from app.core.db import init_db
 
@@ -18,8 +18,9 @@ async def lifespan(app: FastAPI):
     await default_manager.stop()
 
 
-app = FastAPI(title="Sidekick AI Assistant Platform", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="AI Assistant Platform", version="0.1.0", lifespan=lifespan)
 
+app.include_router(auth.router)
 app.include_router(routes.router)
 app.include_router(websocket.router)
 

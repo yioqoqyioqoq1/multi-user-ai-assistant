@@ -13,11 +13,12 @@ def utcnow() -> datetime:
 
 
 class User(Base):
-    """用户表：Phase 1 仅作占位，Phase 2 接入 JWT 后启用。"""
+    """用户表：存储凭证哈希，JWT 认证依据。"""
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

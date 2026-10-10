@@ -31,3 +31,26 @@ class TurnResponse(BaseModel):
 class HistoryResponse(BaseModel):
     conversation_id: str
     history: list[dict[str, str]]
+
+
+class UserRegister(BaseModel):
+    username: str
+    password: str
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    username: str
+    created_at: datetime
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
