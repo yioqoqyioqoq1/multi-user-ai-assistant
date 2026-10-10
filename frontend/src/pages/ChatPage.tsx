@@ -1,19 +1,75 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Conversation, type Message } from '../lib/api'
+import {
+  api,
+  chatSocketUrl,
+  type ChatEvent,
+  type Conversation,
+  type Message,
+  type Todo,
+} from '../lib/api'
+
+const todoText = (t: Todo): string =>
+  typeof t === 'string' ? t : (t.content ?? JSON.stringify(t))
 
 export default function ChatPage({ onLogout }: { onLogout: () => void }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [history, setHistory] = useState<Message[]>([])
   const [paused, setPaused] = useState(false)
+  const [todos, setTodos] = useState<Todo[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const wsRef = useRef<WebSocket | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const refreshList = useCallback(async () => {
     setConversations(await api.listConversations())
   }, [])
+
+  const closeSocket = useCallback(() => {
+    wsRef.current?.close()
+    wsRef.current = null
+  }, [])
+
+  const connect = useCallback(
+    (id: string) => {
+      closeSocket()
+      const ws = new WebSocket(chatSocketUrl(id))
+      wsRef.current = ws
+      ws.onmessage = (ev) => {
+        let event: ChatEvent
+        try {
+          event = JSON.parse(ev.data) as ChatEvent
+        } catch {
+          return
+        }
+        switch (event.type) {
+          case 'todos':
+            setTodos(event.todos)
+            break
+          case 'approval':
+            setHistory(event.history)
+            setPaused(true)
+            setLoading(false)
+            break
+          case 'final':
+            setHistory(event.history)
+            setPaused(false)
+            setLoading(false)
+            void refreshList()
+            break
+          case 'error':
+            setError(event.detail)
+            setLoading(false)
+            break
+        }
+      }
+      ws.onerror = () => setError('WebSocket 连接错误')
+      ws.onclose = () => setLoading(false)
+    },
+    [closeSocket, refreshList],
+  )
 
   useEffect(() => {
     refreshList().catch((e) => setError(e instanceof Error ? e.message : String(e)))
@@ -21,17 +77,22 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [history])
+  }, [history, todos])
+
+  useEffect(() => () => closeSocket(), [closeSocket])
 
   const select = async (id: string) => {
     setActiveId(id)
     setError('')
+    setPaused(false)
+    setTodos([])
+    setLoading(false)
     try {
       setHistory((await api.getHistory(id)).history)
-      setPaused(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
+    connect(id)
   }
 
   const newConversation = async () => {
@@ -42,6 +103,9 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
       setActiveId(conv.id)
       setHistory([])
       setPaused(false)
+      setTodos([])
+      setLoading(false)
+      connect(conv.id)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -52,8 +116,11 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
     try {
       await api.deleteConversation(id)
       if (activeId === id) {
+        closeSocket()
         setActiveId(null)
         setHistory([])
+        setTodos([])
+        setPaused(false)
       }
       await refreshList()
     } catch (e) {
@@ -61,36 +128,33 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  const send = async () => {
-    if (!activeId || !input.trim() || loading) return
+  const send = () => {
+    const msg = input.trim()
+    const ws = wsRef.current
+    if (!activeId || !msg || loading) return
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setError('连接未就绪，请稍后再试')
+      return
+    }
     setError('')
     setLoading(true)
-    try {
-      const res = await api.runTurn(activeId, input.trim())
-      setHistory(res.history)
-      setPaused(res.paused)
-      setInput('')
-      await refreshList()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
+    setTodos([])
+    const current = history
+    setHistory([...current, { role: 'user', content: msg }])
+    ws.send(JSON.stringify({ type: 'turn', message: msg, success_criteria: '', history: current }))
+    setInput('')
   }
 
-  const approve = async () => {
+  const approve = () => {
+    const ws = wsRef.current
     if (!activeId || loading) return
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setError('连接未就绪，请稍后再试')
+      return
+    }
     setError('')
     setLoading(true)
-    try {
-      const res = await api.approve(activeId)
-      setHistory(res.history)
-      setPaused(res.paused)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
+    ws.send(JSON.stringify({ type: 'approve', history }))
   }
 
   return (
@@ -147,10 +211,26 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
 
+        {todos.length > 0 && (
+          <div className="border-b border-gray-200 bg-indigo-50 px-6 py-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-700">
+              待办
+            </h3>
+            <ul className="space-y-1">
+              {todos.map((t, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
+                  <span className="whitespace-pre-wrap">{todoText(t)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {activeId ? (
           <>
             <div className="flex-1 overflow-y-auto px-6 py-4">
-              {history.length === 0 && (
+              {history.length === 0 && !loading && (
                 <p className="text-center text-gray-400">开始对话吧</p>
               )}
               {history.map((m, i) => {
@@ -170,6 +250,13 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
                   </div>
                 )
               })}
+              {loading && (
+                <div className="mb-3 flex justify-start">
+                  <div className="rounded-xl bg-white px-4 py-2 text-sm text-gray-400 shadow">
+                    处理中…
+                  </div>
+                </div>
+              )}
               <div ref={bottomRef} />
             </div>
 

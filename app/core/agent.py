@@ -118,11 +118,16 @@ class Sidekick:
 
     async def resume(self, history: list) -> list:
         """批准 worker 暂停时待执行的操作，继续推进本轮流程。"""
-        payload = Command(resume={"decisions": [{"type": "approve"}] * self.pending_actions})
         last = None
-        async for event in self._advance(payload, history):
+        async for event in self.stream_resume(history):
             last = event
         return last["history"]
+
+    async def stream_resume(self, history: list):
+        """与 resume 逻辑一致，但以异步生成器逐步 yield 中间事件，供 WebSocket 流式输出。"""
+        payload = Command(resume={"decisions": [{"type": "approve"}] * self.pending_actions})
+        async for event in self._advance(payload, history):
+            yield event
 
     async def stream_turn(self, message: str, success_criteria: str, history: list):
         """与 run_turn 逻辑一致，但以异步生成器逐步 yield 中间事件，供 WebSocket 流式输出。"""

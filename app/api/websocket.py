@@ -1,4 +1,15 @@
-"""WebSocket 流式输出端点。"""
+"""WebSocket 流式输出端点：双向协议。
+
+客户端 → 服务端（JSON）：
+- {"type": "turn", "message": "...", "success_criteria": "...", "history": [...]}  开启新一轮
+- {"type": "approve", "history": [...]}  批准暂停中待执行的操作，继续本轮
+
+服务端 → 客户端（JSON 事件，逐步推送）：
+- {"type": "todos", "todos": [...]}          待办列表更新
+- {"type": "approval", "history": [...]}     等待人工审批（本轮暂停）
+- {"type": "final", "history": [...]}        本轮完成（含最终报告）
+- {"type": "error", "detail": "..."}         认证失败或运行时错误
+"""
 import jwt
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -47,13 +58,28 @@ async def websocket_turn(websocket: WebSocket, conversation_id: str):
     try:
         while True:
             data = await websocket.receive_json()
-            message = data.get("message")
-            success_criteria = data.get("success_criteria", "")
+            msg_type = data.get("type", "turn")
+
+            if msg_type == "approve" and not sidekick.paused:
+                await websocket.send_json(
+                    {"type": "error", "detail": "No pending approval for this conversation"}
+                )
+                continue
+
             history = data.get("history", [])
-            async for event in sidekick.stream_turn(message, success_criteria, history):
-                # final / approval 事件携带完整 history，落库持久化
-                if event.get("type") in ("final", "approval"):
-                    await _persist(conversation_id, event["history"])
-                await websocket.send_json(event)
+            try:
+                if msg_type == "approve":
+                    events = sidekick.stream_resume(history)
+                else:
+                    events = sidekick.stream_turn(
+                        data.get("message", ""), data.get("success_criteria", ""), history
+                    )
+                async for event in events:
+                    # final / approval 事件携带完整 history，落库持久化
+                    if event.get("type") in ("final", "approval"):
+                        await _persist(conversation_id, event["history"])
+                    await websocket.send_json(event)
+            except Exception as exc:  # noqa: BLE001  运行时错误回传给前端展示
+                await websocket.send_json({"type": "error", "detail": str(exc)})
     except WebSocketDisconnect:
         pass

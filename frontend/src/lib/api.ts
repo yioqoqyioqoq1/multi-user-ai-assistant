@@ -34,6 +34,14 @@ export interface TurnResponse {
   paused: boolean
 }
 
+export type Todo = string | { content?: string; status?: string }
+
+export type ChatEvent =
+  | { type: 'todos'; todos: Todo[] }
+  | { type: 'approval'; history: Message[] }
+  | { type: 'final'; history: Message[] }
+  | { type: 'error'; detail: string }
+
 export class ApiError extends Error {
   status: number
 
@@ -53,6 +61,12 @@ export function saveToken(token: string): void {
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY)
+}
+
+export function chatSocketUrl(conversationId: string): string {
+  const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+  const token = getToken() ?? ''
+  return `${proto}://${window.location.host}/ws/${conversationId}?token=${encodeURIComponent(token)}`
 }
 
 async function request<T>(path: string, options: { method?: string; body?: string } = {}): Promise<T> {
