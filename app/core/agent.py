@@ -14,6 +14,7 @@ run_turn 收到用户任务 → 初始化一轮 → _advance 启动 worker（cre
 """
 
 import json
+import logging
 import re
 import uuid
 from datetime import datetime
@@ -34,6 +35,8 @@ from app.core.llm import get_llm
 from app.core.middleware import TolerateToolErrors
 from app.core.prompts import EVALUATOR_PROMPT, WORKER_PROMPT, EvaluatorOutput
 from app.tools.tools import get_all_tools
+
+logger = logging.getLogger(__name__)
 
 
 class Sidekick:
@@ -86,6 +89,9 @@ class Sidekick:
             last_reply=last_reply,
         )
         result = await self.evaluator.ainvoke(prompt)
+        usage = getattr(result, "usage_metadata", None)
+        if usage:
+            logger.info("evaluator tokens: %s", usage)
         content = result.content if isinstance(result.content, str) else str(result.content)
         try:
             data = json.loads(content)
@@ -139,6 +145,7 @@ class Sidekick:
         self.success_criteria = success_criteria or "The answer should be clear, correct and complete"
         self.attempts = 0
         self.todos = []
+        logger.info("turn start: thread=%s message=%r", self.sidekick_id, message)
         payload = {
             "messages": [
                 {
@@ -169,6 +176,7 @@ class Sidekick:
                 actions = result["__interrupt__"][0].value["action_requests"]
                 self.paused = True
                 self.pending_actions = len(actions)
+                logger.info("turn paused awaiting approval: thread=%s actions=%d", self.sidekick_id, len(actions))
                 described = "\n".join(action["description"] for action in actions)
                 yield {
                     "type": "approval",
@@ -184,6 +192,7 @@ class Sidekick:
             self.attempts += 1
             verdict = await self.evaluate(self.task, self.success_criteria, reply, tools_used)
             if verdict.success_criteria_met or verdict.user_input_needed or self.attempts >= config.MAX_ATTEMPTS:
+                logger.info("turn final: thread=%s attempts=%d", self.sidekick_id, self.attempts)
                 yield {
                     "type": "final",
                     "history": history + [

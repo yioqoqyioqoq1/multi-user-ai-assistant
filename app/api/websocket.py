@@ -11,6 +11,7 @@
 - {"type": "error", "detail": "..."}         认证失败或运行时错误
 """
 import jwt
+import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import delete
@@ -21,6 +22,8 @@ from app.core.security import decode_token
 from app.models.models import Conversation, Message, User, utcnow
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 async def _persist(conversation_id: str, history: list[dict]) -> None:
@@ -55,6 +58,7 @@ async def websocket_turn(websocket: WebSocket, conversation_id: str):
         return
 
     sidekick = await default_manager.get(conversation_id)
+    logger.info("ws connected: conversation=%s user=%s", conversation_id, user.username)
     try:
         while True:
             data = await websocket.receive_json()
@@ -82,4 +86,4 @@ async def websocket_turn(websocket: WebSocket, conversation_id: str):
             except Exception as exc:  # noqa: BLE001  运行时错误回传给前端展示
                 await websocket.send_json({"type": "error", "detail": str(exc)})
     except WebSocketDisconnect:
-        pass
+        logger.info("ws disconnected: conversation=%s", conversation_id)

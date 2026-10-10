@@ -1,4 +1,5 @@
 """认证端点：注册、登录与当前用户查询。"""
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,6 +13,8 @@ from app.models.models import User
 from app.schemas.schemas import Token, UserLogin, UserOut, UserRegister
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("/register", response_model=UserOut, status_code=201)
@@ -27,6 +30,7 @@ async def register(body: UserRegister, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    logger.info("user registered: %s", user.username)
     return user
 
 
@@ -37,6 +41,7 @@ async def login(body: UserLogin, db: AsyncSession = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password"
         )
+    logger.info("user logged in: %s", user.username)
     return Token(access_token=create_access_token(user.id))
 
 
