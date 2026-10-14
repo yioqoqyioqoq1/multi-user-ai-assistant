@@ -132,6 +132,12 @@ export const api = {
   approve: (id: string) =>
     request<TurnResponse>(`/api/conversations/${id}/approve`, { method: 'POST' }),
 
+  updateConversation: (id: string, title: string) =>
+    request<Conversation>(`/api/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+
   deleteConversation: (id: string) =>
     request<void>(`/api/conversations/${id}`, { method: 'DELETE' }),
 }

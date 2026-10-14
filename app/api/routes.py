@@ -12,6 +12,7 @@ from app.models.models import Conversation, Message, User, utcnow
 from app.schemas.schemas import (
     ConversationCreate,
     ConversationOut,
+    ConversationUpdate,
     HistoryResponse,
     TurnRequest,
     TurnResponse,
@@ -119,6 +120,21 @@ async def approve(
     updated = await sidekick.resume(history)
     await _save_history(db, conversation_id, updated)
     return TurnResponse(conversation_id=conversation_id, history=updated, paused=sidekick.paused)
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationOut)
+async def update_conversation(
+    conversation_id: str,
+    body: ConversationUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    conv = await _get_owned_conversation(db, conversation_id, user)
+    conv.title = body.title
+    conv.updated_at = utcnow()
+    await db.commit()
+    await db.refresh(conv)
+    return conv
 
 
 @router.delete("/conversations/{conversation_id}", status_code=204)

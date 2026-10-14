@@ -66,6 +66,7 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
             setHistory(event.history)
             setPaused(false)
             setLoading(false)
+            setTodos([])
             void refreshList()
             break
           case 'error':
@@ -152,6 +153,14 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
     setHistory([...current, { role: 'user', content: msg }])
     ws.send(JSON.stringify({ type: 'turn', message: msg, success_criteria: '', history: current }))
     setInput('')
+    // 新会话首次发言后，用首条消息自动命名
+    if (current.length === 0) {
+      const title = msg.length > 20 ? `${msg.slice(0, 20)}…` : msg
+      void api
+        .updateConversation(activeId, title)
+        .then(() => refreshList())
+        .catch(() => {})
+    }
   }
 
   const approve = () => {
