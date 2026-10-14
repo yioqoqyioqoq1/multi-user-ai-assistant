@@ -34,7 +34,14 @@ export interface TurnResponse {
   paused: boolean
 }
 
-export type Todo = string | { content?: string; status?: string }
+export type TodoStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface TodoItem {
+  content: string
+  status?: TodoStatus
+}
+
+export type Todo = string | TodoItem
 
 export type ChatEvent =
   | { type: 'todos'; todos: Todo[] }

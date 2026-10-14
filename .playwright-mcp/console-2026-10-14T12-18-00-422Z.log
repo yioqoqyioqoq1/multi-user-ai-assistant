@@ -1,0 +1,11 @@
+[    7223ms] [INFO] Slow network is detected. See https://www.chromestatus.com/feature/5636954674692096 for more details. Fallback font will be used while loading: https://at.alicdn.com/t/a/font_4480420_nu0sa7g3x9d.woff2?t=1737688298714 @ https://www.taobao.com/:0
+[    8709ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:60328/:0
+[   11821ms] [INFO] Slow network is detected. See https://www.chromestatus.com/feature/5636954674692096 for more details. Fallback font will be used while loading: https://at.alicdn.com/t/a/font_403341_z4ofl26w68.woff2?t=1750744474570 @ https://www.taobao.com/:0
+[   32149ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ https://login.taobao.com/havanaone/login/login.htm?bizName=taobao&spm=a21bo.jianhua/a.754894437.1.5af92a89OCTPiL&f=top&redirectURL=https%3A%2F%2Fwww.taobao.com%2F:0
+[   32614ms] [LOG] Wed Oct 14 2026 20:18:33 GMT+0800 (中国标准时间) @ https://g.alicdn.com/AWSC/et/1.84.16/et_f.js:2
+[   32655ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:60328/:0
+[   36866ms] [LOG] {"cfg":{},"tid":"cUeZxNCrvCFiAidpvhS2zA=="} @ https://o.alicdn.com/baxia/baxia-entry-gray/index.js:0
+[   38807ms] [ERROR] Permissions policy violation: gyroscope is not allowed in this document. @ https://g.alicdn.com/secdev/sufei_data/3.9.14/index.js:0
+[   38807ms] [ERROR] Permissions policy violation: accelerometer is not allowed in this document. @ https://g.alicdn.com/secdev/sufei_data/3.9.14/index.js:0
+[   38807ms] [WARNING] The deviceorientation events are blocked by permissions policy. See https://github.com/w3c/webappsec-permissions-policy/blob/master/features.md#sensor-features @ https://g.alicdn.com/secdev/sufei_data/3.9.14/index.js:0
+[   40183ms] [LOG] Wed Oct 14 2026 20:18:40 GMT+0800 (中国标准时间) @ https://g.alicdn.com/AWSC/et/1.84.16/et_f.js:2

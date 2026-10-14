@@ -6,10 +6,19 @@ import {
   type Conversation,
   type Message,
   type Todo,
+  type TodoStatus,
 } from '../lib/api'
 
-const todoText = (t: Todo): string =>
-  typeof t === 'string' ? t : (t.content ?? JSON.stringify(t))
+function normalizeTodo(t: Todo): { content: string; status: TodoStatus } {
+  if (typeof t === 'string') return { content: t, status: 'pending' }
+  return { content: t.content ?? JSON.stringify(t), status: t.status ?? 'pending' }
+}
+
+const _statusMeta: Record<TodoStatus, { icon: string; cls: string; textCls: string }> = {
+  pending:       { icon: '○', cls: 'border-gray-300 bg-gray-100',      textCls: 'text-gray-500' },
+  in_progress:   { icon: '◉', cls: 'border-indigo-400 bg-indigo-100',  textCls: 'text-indigo-800 font-medium' },
+  completed:     { icon: '✔', cls: 'border-green-400 bg-green-100',     textCls: 'text-green-700 line-through' },
+}
 
 export default function ChatPage({ onLogout }: { onLogout: () => void }) {
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -216,13 +225,20 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-indigo-700">
               待办
             </h3>
-            <ul className="space-y-1">
-              {todos.map((t, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
-                  <span className="whitespace-pre-wrap">{todoText(t)}</span>
-                </li>
-              ))}
+            <ul className="space-y-2">
+              {todos.map((t, i) => {
+                const todo = normalizeTodo(t)
+                const meta = _statusMeta[todo.status]
+                return (
+                  <li
+                    key={i}
+                    className={`flex items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${meta.cls}`}
+                  >
+                    <span className="text-base leading-none">{meta.icon}</span>
+                    <span className={`whitespace-pre-wrap ${meta.textCls}`}>{todo.content}</span>
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )}
