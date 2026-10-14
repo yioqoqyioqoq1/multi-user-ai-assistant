@@ -29,6 +29,9 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const skipBlurRef = useRef(false)
   const wsRef = useRef<WebSocket | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -138,6 +141,26 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  const startRename = (id: string, title: string) => {
+    skipBlurRef.current = false
+    setEditingId(id)
+    setEditingTitle(title)
+  }
+
+  const finishRename = async (id: string, save: boolean) => {
+    const title = editingTitle.trim()
+    const original = conversations.find((c) => c.id === id)?.title ?? ''
+    setEditingId(null)
+    setEditingTitle('')
+    if (!save || !title || title === original) return
+    try {
+      await api.updateConversation(id, title)
+      await refreshList()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const send = () => {
     const msg = input.trim()
     const ws = wsRef.current
@@ -201,11 +224,38 @@ export default function ChatPage({ onLogout }: { onLogout: () => void }) {
             <div
               key={c.id}
               onClick={() => select(c.id)}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                startRename(c.id, c.title)
+              }}
               className={`group mb-1 flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm ${
                 activeId === c.id ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-100'
               }`}
             >
-              <span className="truncate">{c.title}</span>
+              {editingId === c.id ? (
+                <input
+                  value={editingTitle}
+                  autoFocus
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.currentTarget.blur()
+                    } else if (e.key === 'Escape') {
+                      skipBlurRef.current = true
+                      e.currentTarget.blur()
+                    }
+                  }}
+                  onBlur={() => {
+                    const save = !skipBlurRef.current
+                    skipBlurRef.current = false
+                    void finishRename(c.id, save)
+                  }}
+                  className="min-w-0 flex-1 rounded border border-indigo-400 px-1 py-0.5 text-sm outline-none"
+                />
+              ) : (
+                <span className="truncate">{c.title}</span>
+              )}
               <button
                 type="button"
                 onClick={(e) => {
